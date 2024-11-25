@@ -1,0 +1,12 @@
+# Creating custom worker for profile-engine-model pipeline
+# Use official Apache Airflow image as the base image
+FROM apache/airflow:2.7.0-python3.10
+
+WORKDIR /opt/airflow
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Start Airflow worker by default
+ENTRYPOINT ["celery", "-A", "airflow.providers.celery.executors.celery_executor.app","worker"]

@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  airflow-webserver:
+    image: apache/airflow:2.7.0-python3.10
+    container_name: airflow-webserver
+    restart: always
+    depends_on:
+      - airflow-scheduler
+      - airflow-redis
+      - airflow-postgres
+      - airflow-worker
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__CELERY__BROKER_URL=redis://airflow-redis:${REDIS_PORT}/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@airflow-postgres:${POSTGRESQL_PORT}/${POSTGRES_DB}
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@airflow-postgres:${POSTGRESQL_PORT}/${POSTGRES_DB}
+      - AIRFLOW__CELERY__CELERY_APP_NAME=airflow.providers.celery.executors.celery_executor.app
+    volumes:
+      - ./dags:/opt/airflow/dags/python
+      - logs:/opt/airflow/logs
+      - plugins:/opt/airflow/plugins
+    ports:
+      - ${AIRFLOW_UI_PORT}:8080
+    entrypoint: >
+      bash -c "airflow db init &&
+               airflow users create --username ${AIRFLOW_ADMIN_USERNAME:-admin} --password ${AIRFLOW_ADMIN_PASSWORD:-password} --firstname ai_legit --lastname ismaya --role Admin --email ${AIRFLOW_ADMIN_EMAIL:-admin@localhost.com}  &&
+               airflow webserver"
+
+  airflow-scheduler:
+    image: apache/airflow:2.7.0-python3.10
+    container_name: airflow-scheduler
+    restart: always
+    depends_on:
+      - airflow-redis
+      - airflow-postgres
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__CELERY__BROKER_URL=redis://airflow-redis:${REDIS_PORT}/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@airflow-postgres:${POSTGRESQL_PORT}/${POSTGRES_DB}
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@airflow-postgres:${POSTGRESQL_PORT}/${POSTGRES_DB}
+      - AIRFLOW__CELERY__CELERY_APP_NAME=airflow.providers.celery.executors.celery_executor.app
+    volumes:
+      - ./dags:/opt/airflow/dags/python
+      - logs:/opt/airflow/logs
+      - plugins:/opt/airflow/plugins
+    entrypoint: >
+      bash -c "airflow scheduler"
+
+  airflow-worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    container_name: airflow-worker
+    restart: always
+    depends_on:
+      - airflow-redis
+      - airflow-postgres
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__CELERY__BROKER_URL=redis://airflow-redis:${REDIS_PORT}/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@airflow-postgres:${POSTGRESQL_PORT}/${POSTGRES_DB}
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@airflow-postgres:${POSTGRESQL_PORT}/${POSTGRES_DB}
+      - AIRFLOW__CELERY__CELERY_APP_NAME=airflow.providers.celery.executors.celery_executor.app
+    volumes:
+      - ./dags:/opt/airflow/dags/python
+      - logs:/opt/airflow/logs
+      - plugins:/opt/airflow/plugins 
+      - ${REPO_PATH}:/opt/airflow/scripts
+
+  airflow-redis:
+    image: redis:latest
+    container_name: airflow-redis
+    restart: always
+
+  airflow-postgres:
+    image: postgres:13
+    container_name: airflow-postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    entrypoint: /bin/bash -c "chown -R 999:999 /var/lib/postgresql/data && docker-entrypoint.sh postgres"
+
+# Named volumes
+volumes:
+  dags:
+  logs:
+  plugins:
+  postgres_data:
